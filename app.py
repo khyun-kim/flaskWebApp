@@ -2,7 +2,7 @@ from flask import Flask,render_template,flash , redirect , url_for , session ,re
 from flask_mysqldb import MySQL
 from wtforms import Form, StringField , TextAreaField , PasswordField ,validators
 from functools import wraps 
-
+from passlib.hash import pbkdf2_sha256 # HASH 함수는 복호화 불가능
 
 app=Flask(__name__)
 app.debug = True
@@ -70,7 +70,7 @@ def register():
         name=form.name.data
         email=form.email.data
         username=form.username.data
-        password=form.password.data
+        password=pbkdf2_sha256.hash(str(form.password.data))
 
         cur = mysql.connection.cursor()
 
@@ -83,26 +83,42 @@ def register():
         return "회원가입 완료 되었습니다."
     return render_template('register.html', form=form)
 
+#GET 과 POST 둘다 해당 경로를 통해 적용하기 위함(조회와 생성을 하나로)
 @app.route('/add_article', methods=['GET','POST'])
 def add_article():
     form = ArticleForm(request.form)
     if request.method == 'POST' and form.validate():
         title=form.title.data
         body=form.body.data
-
-    # title="테스트"
-    # author="park"
-    # body="이것은 테스트2 입니다"
-
         cur = mysql.connection.cursor()
-
         cur.execute('INSERT INTO articles(title,body) VALUES(%s,%s)', (title,body))
-
         mysql.connection.commit()
-
         cur.close()
 
     return render_template('add_article.html' ,form=form)
+@app.route('/login',methods=['GET','POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password_cadidate = request.form['password']
+        
+        cur = mysql.connection.cursor()
+        result = cur.execute("SELECT * FROM users where username=%s",[username])
+        if result > 0 :
+            user = cur.fetchall()
+            cur.close()
+            password = user[0]['password']
+
+            if pbkdf2_sha256.verify(password_cadidate, password):
+                return redirect(url_for('articles'))
+            else :
+                return "비밀번호가 잘못되었어요"
+
+        else :
+            cur.close()
+            return "존재하지 않는 ID입니다."
+
+    return render_template('login.html')
 
 if __name__ == '__main__':
     app.run(debug=True)
